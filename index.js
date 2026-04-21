@@ -309,3 +309,4 @@ bot.on('text', async (ctx) => {
 });
 
 bot.launch();
+console.log("Bot started...");
