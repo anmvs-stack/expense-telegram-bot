@@ -256,6 +256,9 @@ bot.on('text', async (ctx) => {
         // 4. Apply rules
         parsed = await applyRules(parsed, ledgerId);
 
+        // 🔍 DEBUG
+        console.log("After rules:", parsed);
+
         // 5. Default account fallback
         if (!parsed.account_id) {
             const defaultAccount = await getDefaultAccount(ledgerId);

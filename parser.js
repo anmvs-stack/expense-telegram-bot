@@ -21,12 +21,10 @@ export function parseMessage(input) {
   const amount = amountMatch ? parseFloat(amountMatch[0]) : null;
 
   if (!amount) {
-    return {
-      amount: null
-    };
+    return { amount: null };
   }
 
-  // Remove amount from text
+  // Remove amount
   text = text.replace(amountMatch[0], '').trim();
 
   // =========================
@@ -38,10 +36,12 @@ export function parseMessage(input) {
     'from', 'at', 'in', 'the'
   ];
 
-  const tokens = text.split(' ').filter(word => !noiseWords.includes(word));
+  const tokens = text
+    .split(' ')
+    .filter(word => !noiseWords.includes(word));
 
   // =========================
-  // 4. ACCOUNT HINT DETECTION
+  // 4. ACCOUNT HINT
   // =========================
   let account_hint = null;
 
@@ -64,23 +64,23 @@ export function parseMessage(input) {
   }
 
   // =========================
-  // 5. MERCHANT EXTRACTION
+  // 5. MERCHANT
   // =========================
   let merchant = remainingTokens.join(' ').trim();
 
-  // Clean merchant further
+  // ✅ Strong normalization
   merchant = merchant
     .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
-  // Fallback
   if (!merchant) merchant = 'unknown';
 
   return {
     amount,
     type,
     merchant,
-    account_hint, // used later for alias matching
+    account_hint,
     raw: input,
     category_id: null,
     category_name: null,
