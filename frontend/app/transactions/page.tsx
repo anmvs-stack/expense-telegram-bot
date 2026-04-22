@@ -7,7 +7,9 @@ import {
   updateTransaction,
   deleteTransaction,
 } from '@/lib/queries';
-import { supabase } from '@/lib/supabaseClient';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+
+const supabase = getSupabaseClient();
 
 export default function TransactionsPage() {
   const [data, setData] = useState<any[]>([]);
