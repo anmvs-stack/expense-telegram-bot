@@ -1,1 +1,0 @@
-(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,39508,o=>{"use strict";o.i(30501),o.i(58338);let t=Error("Cannot find module 'dayjs'");throw t.code="MODULE_NOT_FOUND",t}]);

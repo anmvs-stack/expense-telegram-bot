@@ -108,18 +108,6 @@ export async function fetchDailyTrend(startDate: string, endDate: string) {
   }));
 }
 
-export async function updateTransaction(payload: any) {
-  const { error } = await supabase.rpc('update_transaction', payload);
-  if (error) throw error;
-}
-
-export async function deleteTransaction(id: string) {
-  const { error } = await supabase.rpc('delete_transaction', {
-    txn_id: id,
-  });
-  if (error) throw error;
-}
-
 /* ✅ NEW */
 
 export async function updateTransaction(payload: {
