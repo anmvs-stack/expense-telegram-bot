@@ -1,6 +1,8 @@
-import { createClient } from '@/utils/supabase/server';
+import { getSupabaseClient } from '@/lib/supabaseClient'
 import CategoryChart from '@/components/CategoryChart';
 import MonthlyTrend from '@/components/MonthlyTrend';
+
+const supabase = getSupabaseClient()
 
 export default async function DashboardPage() {
   const supabase = await createClient();
