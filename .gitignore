@@ -1,5 +1,8 @@
 # Environment variables (CRITICAL)
+node_modules
 .env
+backend/.env
+frontend/.env
 .env.*
 !.env.example
 

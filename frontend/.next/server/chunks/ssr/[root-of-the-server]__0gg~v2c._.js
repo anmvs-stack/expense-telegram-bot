@@ -1,0 +1,3 @@
+module.exports=[18622,(a,b,c)=>{b.exports=a.x("next/dist/compiled/next-server/app-page-turbo.runtime.prod.js",()=>require("next/dist/compiled/next-server/app-page-turbo.runtime.prod.js"))},12878,(a,b,c)=>{"use strict";b.exports=a.r(18622)},75694,(a,b,c)=>{"use strict";b.exports=a.r(12878).vendored["react-ssr"].ReactJsxRuntime},10879,(a,b,c)=>{"use strict";b.exports=a.r(12878).vendored["react-ssr"].React},42302,a=>{"use strict";a.i(75694),a.i(10879);let b=Error("Cannot find module 'dayjs'");throw b.code="MODULE_NOT_FOUND",b}];
+
+//# sourceMappingURL=%5Broot-of-the-server%5D__0gg~v2c._.js.map

@@ -1,0 +1,23 @@
+{
+  "name": "telegram-exp-mgmt",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.0",
+    "@tanstack/react-table": "^8.21.3",
+    "dayjs": "^1.11.20",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "recharts": "^3.8.1",
+    "telegraf": "^4.16.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {}
+}
