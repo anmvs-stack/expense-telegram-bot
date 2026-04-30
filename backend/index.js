@@ -12,6 +12,8 @@ import {
     applyRules
 } from './ruleEngine.js';
 
+import { pushToGoogleSheets } from './services/googleSheets.js'
+
 import express from 'express';
 
 const app = express();
@@ -98,6 +100,27 @@ async function getUncategorized(ledgerId) {
         .single();
 
     return data;
+}
+
+function extractRuleKeyword(merchant = '') {
+    const stopWords = new Set([
+        'the', 'for', 'and', 'to', 'from', 'on', 'at', 'via', 'using', 'paid', 'pay', 'spent', 'spend'
+    ]);
+    const accountWords = new Set([
+        'upi', 'gpay', 'phonepe', 'paytm', 'hdfc', 'icici', 'axis', 'sbi', 'amex', 'card', 'cc'
+    ]);
+
+    const tokens = merchant
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .split(/\s+/)
+        .filter(token => token.length > 2 && !stopWords.has(token) && !accountWords.has(token));
+
+    if (tokens.length >= 2) {
+        return `${tokens[0]} ${tokens[1]}`;
+    }
+
+    return tokens[0] || null;
 }
 
 /* =========================
@@ -195,11 +218,7 @@ bot.hears(/^edit last (.+)/i, async (ctx) => {
             .eq('id', tx.id);
 
         // 🔥 Rule learning (UPSERT)
-        const keyword = tx.merchant
-            ?.toLowerCase()
-            .replace(/[^a-z0-9 ]/g, '')
-            .split(' ')
-            .filter(w => w.length > 2)[0];
+        const keyword = extractRuleKeyword(tx.merchant || tx.notes || '');
 
         if (keyword) {
             await supabase
@@ -254,10 +273,11 @@ bot.on('text', async (ctx) => {
         }
 
         // 4. Apply rules
-        parsed = await applyRules(parsed, ledgerId);
+        parsed = await applyRules(parsed, ledgerId, user.id);
 
         // 🔍 DEBUG
         console.log("After rules:", parsed);
+        console.log("Account match source:", parsed.account_match_source || 'fallback/default');
 
         // 5. Default account fallback
         if (!parsed.account_id) {
@@ -278,10 +298,9 @@ bot.on('text', async (ctx) => {
 
         // inside your handler
         const nowIST = dayjs().tz(IST);
-
-        const {
-            error
-        } = await supabase.from('transactions').insert({
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert({
             ledger_id: ledgerId,
             user_id: user.id,
             amount: parsed.amount,
@@ -289,18 +308,35 @@ bot.on('text', async (ctx) => {
             category_id: parsed.category_id,
             category: parsed.category_name,
             account_id: parsed.account_id,
-            merchant: parsed.merchant,
+
+            payment_method: parsed.payment_method || '',
+            flow_category: parsed.flow_category || '',
+
+            merchant: parsed.merchant || text,
+            notes: text,
             raw_input: text,
             source: 'bot',
 
-            // ✅ IST logical date (critical for reports)
             date: nowIST.format('YYYY-MM-DD'),
-
-            // ✅ Exact timestamp (stored as UTC in DB)
             created_at: nowIST.toISOString(),
-        });
+          })
+          .select()
+          .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('DB insert failed', error);
+          return;
+        }
+
+        try {
+          console.log('About to push to Google Sheets:', data);
+          await pushToGoogleSheets(data);
+        } catch (err) {
+          console.error('Google Sheets push failed');
+          console.error('Message:', err.message);
+          console.error('Full error:', err);
+          console.error('API response:', err.response?.data);
+        }
 
         // 8. Reply
         ctx.reply(`₹${parsed.amount} → ${parsed.category_name}`);
@@ -309,6 +345,7 @@ bot.on('text', async (ctx) => {
         console.error(err);
         ctx.reply('Error processing transaction');
     }
+
 });
 
 bot.launch();

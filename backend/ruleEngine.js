@@ -1,83 +1,145 @@
 import { supabase } from './supabase.js';
 
-export async function applyRules(parsed, ledgerId) {
-  // ✅ Use CLEANED merchant instead of raw text
-  const text = parsed.merchant?.toLowerCase() || '';
+function normalize(value) {
+  return (value || '').toLowerCase().trim();
+}
 
-  // 1. Fetch rules (ledger scoped)
-  const { data: rules, error: rulesError } = await supabase
+function scoreRule(rule) {
+  const priority = rule.priority || 0;
+  const keywordLen = (rule.keyword || '').length;
+  return priority * 100 + keywordLen;
+}
+
+function pickBest(candidates) {
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0];
+}
+
+export async function applyRules(parsed, ledgerId, userId) {
+  const merchantText = normalize(parsed.merchant);
+  const rawText = normalize(parsed.raw_text || parsed.raw);
+
+  let { data: aliases, error: aliasError } = await supabase
+    .from('account_aliases')
+    .select('alias, account_id, priority, user_id')
+    .eq('ledger_id', ledgerId)
+    .or(`user_id.eq.${userId},user_id.is.null`)
+    .order('priority', { ascending: false });
+
+  // Backward-compatible fallback if migration not yet applied
+  if (aliasError?.code === '42703') {
+    const fallback = await supabase
+      .from('account_aliases')
+      .select('alias, account_id')
+      .eq('ledger_id', ledgerId)
+      .or(`user_id.eq.${userId},user_id.is.null`);
+    aliases = fallback.data;
+    aliasError = fallback.error;
+  }
+
+  if (aliasError) {
+    console.error("Alias fetch error:", aliasError);
+  }
+  aliases = aliases || [];
+  aliases.sort((a, b) => {
+    const aUserSpecific = normalize(a.user_id) === normalize(userId) ? 1 : 0;
+    const bUserSpecific = normalize(b.user_id) === normalize(userId) ? 1 : 0;
+    if (aUserSpecific !== bUserSpecific) return bUserSpecific - aUserSpecific;
+    return (b.priority || 0) - (a.priority || 0);
+  });
+
+  // Account alias gets first preference
+  if (!parsed.account_id) {
+    const aliasHit = aliases.find(a => rawText.includes(normalize(a.alias)));
+    if (aliasHit) {
+      parsed.account_id = aliasHit.account_id;
+      parsed.matched_by = 'alias';
+      parsed.matched_alias = aliasHit.alias;
+      parsed.account_match_source = normalize(aliasHit.user_id) === normalize(userId)
+        ? 'user-specific alias'
+        : 'shared alias';
+    }
+  }
+
+  let { data: rules, error: rulesError } = await supabase
     .from('rules')
-    .select('*')
+    .select('keyword, category_id, account_id, priority, rule_type')
     .eq('ledger_id', ledgerId)
     .order('priority', { ascending: false });
+
+  // Backward-compatible fallback if priority/rule_type columns are missing
+  if (rulesError?.code === '42703') {
+    const fallback = await supabase
+      .from('rules')
+      .select('keyword, category_id, account_id')
+      .eq('ledger_id', ledgerId);
+    rules = (fallback.data || []).map((r) => ({
+      ...r,
+      priority: 0,
+      rule_type: r.category_id ? 'category' : (r.account_id ? 'account' : null)
+    }));
+    rulesError = fallback.error;
+  }
 
   if (rulesError) {
     console.error("Rules fetch error:", rulesError);
     return parsed;
   }
+  rules = rules || [];
 
-  // ✅ Safety check
   if (!rules || rules.length === 0) {
     console.log("No rules found for ledger:", ledgerId);
     return parsed;
   }
 
-  // 2. Fetch aliases (FIXED: ledger scoped)
-  const { data: aliases, error: aliasError } = await supabase
-    .from('account_aliases')
-    .select('alias, account_id')
-    .eq('ledger_id', ledgerId);
+  // Keep account/category resolution independent so both can be applied
+  const accountCandidates = [];
+  const categoryCandidates = [];
+  for (const rule of rules) {
+    const keyword = normalize(rule.keyword);
+    if (!keyword) continue;
 
-  if (aliasError) {
-    console.error("Alias fetch error:", aliasError);
-  }
+    if (!(merchantText.includes(keyword) || rawText.includes(keyword))) continue;
 
-  // ACCOUNT MATCH
-  if (parsed.account_hint && aliases) {
-    for (const a of aliases) {
-      if (parsed.account_hint.includes(a.alias.toLowerCase())) {
-        parsed.account_id = a.account_id;
-        break;
-      }
+    const score = scoreRule(rule);
+    const type = normalize(rule.rule_type);
+
+    if (rule.account_id && (type === 'account' || type === 'both' || !type)) {
+      accountCandidates.push({ rule, keyword, score });
+    }
+    if (rule.category_id && (type === 'category' || type === 'both' || !type)) {
+      categoryCandidates.push({ rule, keyword, score });
     }
   }
 
-  // 🔍 DEBUG LOGS (keep temporarily)
-  console.log("Merchant:", parsed.merchant);
-  console.log("Rules:", rules.map(r => r.keyword));
+  if (!parsed.account_id) {
+    const bestAccount = pickBest(accountCandidates);
+    if (bestAccount) {
+      parsed.account_id = bestAccount.rule.account_id;
+      parsed.matched_account_keyword = bestAccount.keyword;
+      parsed.matched_by = parsed.matched_by || 'rule';
+      parsed.account_match_source = 'rule';
+    }
+  }
 
-  // --- RULE MATCH ---
-  for (const rule of rules) {
-    const keyword = rule.keyword?.toLowerCase();
+  if (!parsed.category_id) {
+    const bestCategory = pickBest(categoryCandidates);
+    if (!bestCategory) return parsed;
+    parsed.category_id = bestCategory.rule.category_id;
+    parsed.matched_category_keyword = bestCategory.keyword;
+    parsed.matched_by = parsed.matched_by || 'rule';
 
-    if (!keyword) continue;
+    const { data: cat, error: categoryError } = await supabase
+      .from('categories')
+      .select('name')
+      .eq('id', bestCategory.rule.category_id)
+      .single();
 
-    console.log("Checking rule:", keyword);
-
-    // ✅ Improved matching (handles partial + multi-word)
-    if (text.includes(keyword)) {
-      console.log("Matched rule:", keyword);
-
-      // CATEGORY
-      if (rule.category_id && !parsed.category_id) {
-        parsed.category_id = rule.category_id;
-
-        // Fetch category name
-        const { data: cat } = await supabase
-          .from('categories')
-          .select('name')
-          .eq('id', rule.category_id)
-          .single();
-
-        parsed.category_name = cat?.name;
-      }
-
-      // ACCOUNT
-      if (rule.account_id && !parsed.account_id) {
-        parsed.account_id = rule.account_id;
-      }
-
-      break;
+    if (categoryError) {
+      console.error("Category fetch error:", categoryError);
+    } else {
+      parsed.category_name = cat?.name;
     }
   }
 

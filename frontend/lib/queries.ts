@@ -10,6 +10,7 @@ export async function fetchTransactions(params: {
   accountIds?: string[];
   minAmount?: number;
   maxAmount?: number;
+  description?: string;
   search?: string;
   limit: number;
   offset: number;
@@ -22,6 +23,7 @@ export async function fetchTransactions(params: {
     account_ids: params.accountIds ?? null,
     min_amount: params.minAmount ?? null,
     max_amount: params.maxAmount ?? null,
+    raw_input: params.description ?? null,
     search: params.search ?? null,
     limit_val: params.limit,
     offset_val: params.offset,

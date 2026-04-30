@@ -42,6 +42,7 @@ export default function TransactionsPage() {
     const result = await fetchTransactions({
       startDate,
       endDate,
+      description,
       search,
       minAmount,
       maxAmount,
